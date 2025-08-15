@@ -1,8 +1,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { ConsumptionMethod } from "@prisma/client";
+import { useParams, useSearchParams } from "next/navigation";
+import { useContext, useState } from "react";
 import { useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +25,8 @@ import { FormItem } from "@/components/ui/form";
 import { FormControl } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
+import { createOrder } from "../../actions/create-order";
+import { CartContext } from "../../contexts/cart";
 import { isValidCpf } from "../../helpers/cpf";
 
 const formSchema = z.object({
@@ -35,6 +41,10 @@ const formSchema = z.object({
 type FormSchema = z.infer<typeof formSchema>;
 
 const FinishOrderButton = () => {
+  const { slug } = useParams<{ slug: string }>();
+  const { products } = useContext(CartContext);
+  const searchParams = useSearchParams();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const form = useForm<FormSchema>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -43,12 +53,33 @@ const FinishOrderButton = () => {
     },
   });
 
-  const onSubmit = (data: FormSchema) => {
-    console.log(data);
+  const onSubmit = async (data: FormSchema) => {
+    try {
+      const consumptionMethod = searchParams.get(
+        "consumptionMethod",
+      ) as ConsumptionMethod;
+
+      await createOrder({
+        customerName: data.username,
+        customerCpf: data.cpf,
+        products,
+        consumptionMethod,
+        slug,
+        total: 0,
+      });
+      //Fecha o Drawer após sucesso do pedido
+      setIsDrawerOpen(false);
+      //Limpa o formulário
+      form.reset();
+      toast.success("Pedido criado com sucesso");
+      console.log("Pedido criado com sucesso");
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (
-    <Drawer>
+    <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
       <DrawerTrigger asChild>
         <Button className="mb-5 w-full rounded-full">Finalizar compra</Button>
       </DrawerTrigger>
@@ -109,7 +140,10 @@ const FinishOrderButton = () => {
                   <Button
                     variant="outline"
                     className="w-full rounded-full"
-                    onClick={() => form.reset()}
+                    onClick={() => {
+                      form.reset();
+                      setIsDrawerOpen(false);
+                    }}
                   >
                     Cancelar
                   </Button>
