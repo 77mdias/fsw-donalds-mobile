@@ -52,10 +52,12 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const decreaseProductQuantity = (productId: string) => {
     setProducts(prevProducts => {
       return prevProducts.map(prevProduct => {
-        if (prevProduct.id === productId) {
-          return { ...prevProduct, quantity: prevProduct.quantity - 1 };
+        if (prevProduct.id !== productId) {
+          return prevProduct;
+        } if (prevProduct.quantity === 1) {
+          return prevProduct;
         }
-        return prevProduct;
+        return { ...prevProduct, quantity: prevProduct.quantity - 1 };
       });
     });
   }
@@ -84,7 +86,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       decreaseProductQuantity,
       increaseProductQuantity,
       removeProduct,
-    }}>
+      }}>
       {children}
     </CartContext.Provider>
   )
