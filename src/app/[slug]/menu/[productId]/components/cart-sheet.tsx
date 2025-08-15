@@ -17,6 +17,8 @@ const CartSheet = () => {
           {products.map((product) => (
             <div key={product.id}>
               <h3>{product.name}</h3>
+              <p>{formatCurrency(product.price)}</p>
+              <p>{product.quantity}</p>
             </div>
           ))}
           <div className="flex items-center justify-between">
