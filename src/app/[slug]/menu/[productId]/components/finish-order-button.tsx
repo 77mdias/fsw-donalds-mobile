@@ -2,8 +2,9 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ConsumptionMethod } from "@prisma/client";
+import { Loader2 } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
-import { useContext, useState } from "react";
+import { useContext, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
 import { toast } from "sonner";
@@ -41,6 +42,7 @@ const formSchema = z.object({
 type FormSchema = z.infer<typeof formSchema>;
 
 const FinishOrderButton = () => {
+  const [isPending, startTransition] = useTransition();
   const { slug } = useParams<{ slug: string }>();
   const { products } = useContext(CartContext);
   const searchParams = useSearchParams();
@@ -59,21 +61,24 @@ const FinishOrderButton = () => {
         "consumptionMethod",
       ) as ConsumptionMethod;
 
-      await createOrder({
+      startTransition(async () => {
+        await createOrder({
         customerName: data.username,
         customerCpf: data.cpf,
         products,
         consumptionMethod,
-        slug,
-        total: 0,
+          slug,
+          total: 0,
+        });
+        //Fecha o Drawer após sucesso do pedido
+        setIsDrawerOpen(false);
+        //Limpa o formulário
+        form.reset();
+        toast.success("Pedido criado com sucesso");
+        console.log("Pedido criado com sucesso");
       });
-      //Fecha o Drawer após sucesso do pedido
-      setIsDrawerOpen(false);
-      //Limpa o formulário
-      form.reset();
-      toast.success("Pedido criado com sucesso");
-      console.log("Pedido criado com sucesso");
     } catch (error) {
+      toast.error("Erro ao criar pedido");
       console.error(error);
     }
   };
@@ -133,8 +138,13 @@ const FinishOrderButton = () => {
                   type="submit"
                   className="w-full rounded-full"
                   variant="destructive"
+                  disabled={isPending}
                 >
-                  Finalizar compra
+                  {isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    "Finalizar compra"
+                  )}
                 </Button>
                 <DrawerClose asChild>
                   <Button
