@@ -37,6 +37,12 @@ export async function POST(request: Request) {
     const text = await request.text();
     console.log("📄 Corpo da requisição recebido, tamanho:", text.length);
 
+    // EVENTOS DO STRIPE QUE ESTAMOS PROCESSANDO:
+    // checkout.session.completed - Pagamento bem-sucedido
+    // charge.failed - Falha no pagamento
+    // checkout.session.async_payment_failed - Falha em pagamento assíncrono
+    // checkout.session.expired - Sessão expirada
+
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(text, signature, webhookSecret);
@@ -47,7 +53,13 @@ export async function POST(request: Request) {
     }
 
     const paymentIsSucessful = event.type === "checkout.session.completed";
+    const paymentFailed =
+      event.type === "charge.failed" ||
+      event.type === "checkout.session.async_payment_failed" ||
+      event.type === "checkout.session.expired";
+
     console.log("💳 Pagamento bem-sucedido?", paymentIsSucessful);
+    console.log("❌ Pagamento falhou?", paymentFailed);
 
     if (paymentIsSucessful) {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -135,6 +147,99 @@ export async function POST(request: Request) {
 
         return NextResponse.json(
           { error: "Database update failed", orderId },
+          { status: 500 },
+        );
+      }
+    }
+
+    // TRATAMENTO PARA FALHAS DE PAGAMENTO
+    if (paymentFailed) {
+      let orderId: string | undefined;
+
+      // Para charge.failed, o orderId está nos metadados do charge
+      if (event.type === "charge.failed") {
+        const charge = event.data.object as Stripe.Charge;
+        orderId = charge.metadata?.orderId;
+        console.log("💳 Falha no charge detectada, ID do pedido:", orderId);
+      }
+
+      // Para eventos de sessão, o orderId está nos metadados da sessão
+      if (
+        event.type === "checkout.session.async_payment_failed" ||
+        event.type === "checkout.session.expired"
+      ) {
+        const session = event.data.object as Stripe.Checkout.Session;
+        orderId = session.metadata?.orderId;
+        console.log("🛒 Falha na sessão detectada, ID do pedido:", orderId);
+      }
+
+      if (!orderId) {
+        console.warn("⚠️ ID do pedido não encontrado nos metadados de falha");
+        return NextResponse.json({
+          received: true,
+          warning: "No order ID found in failed payment",
+        });
+      }
+
+      try {
+        // Verificar se o pedido existe
+        const existingOrder = await db.order.findUnique({
+          where: {
+            id: Number(orderId),
+          },
+        });
+
+        if (!existingOrder) {
+          console.error("❌ Pedido não encontrado no banco de dados:", orderId);
+          return NextResponse.json(
+            { error: "Order not found", orderId },
+            { status: 404 },
+          );
+        }
+
+        console.log(
+          "📊 Pedido encontrado para falha, status atual:",
+          existingOrder.status,
+        );
+
+        // Atualizar pedido para PAYMENT_FAILED
+        const updatedOrder = await db.order.update({
+          where: {
+            id: Number(orderId),
+          },
+          data: {
+            status: "PAYMENT_FAILED",
+          },
+          include: {
+            restaurant: { select: { slug: true } },
+            OrderProcuct: true,
+          },
+        });
+
+        console.log("❌ Pedido marcado como falha de pagamento:", {
+          orderId: updatedOrder.id,
+          newStatus: updatedOrder.status,
+          eventType: event.type,
+        });
+
+        revalidatePath(
+          `/${updatedOrder.restaurant.slug}/orders?cpf=${removeCpfPunctuation(
+            updatedOrder.customerCpf,
+          )}`,
+        );
+
+        return NextResponse.json(
+          {
+            received: true,
+            status: "payment_failed",
+            orderId: updatedOrder.id,
+          },
+          { status: 200 },
+        );
+      } catch (dbError) {
+        console.error("❌ Erro ao marcar pedido como falha:", dbError);
+        return NextResponse.json(
+          { error: "Failed to update order status", orderId },
           { status: 500 },
         );
       }

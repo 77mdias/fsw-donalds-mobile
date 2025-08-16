@@ -1,5 +1,5 @@
 "use client";
-import { OrderStatus, type Prisma } from "@prisma/client";
+import { ConsumptionMethod, OrderStatus, type Prisma } from "@prisma/client";
 import { ChevronLeftIcon, ScrollTextIcon } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/helpers/format-currency";
 
+import { removeCpfPunctuation } from "../../menu/helpers/cpf";
+
 interface OrderListProps {
   orders: Prisma.OrderGetPayload<{
     include: {
@@ -16,6 +18,7 @@ interface OrderListProps {
         select: {
           name: true;
           avatarImageUrl: true;
+          slug: true;
         };
       };
       OrderProcuct: {
@@ -25,6 +28,9 @@ interface OrderListProps {
       };
     };
   }>[];
+  consumptionMethod: ConsumptionMethod;
+  cpf: string;
+  restaurantSlug: string;
 }
 
 const getStatusLabel = (status: OrderStatus) => {
@@ -35,7 +41,12 @@ const getStatusLabel = (status: OrderStatus) => {
   return "";
 };
 
-const OrderList = ({ orders }: OrderListProps) => {
+const OrderList = ({
+  orders,
+  consumptionMethod,
+  cpf,
+  restaurantSlug,
+}: OrderListProps) => {
   const router = useRouter();
 
   // TODO: ESTILOS PARA OS STATUS DOS PEDIDOS | PARA NÃO EXTENDER A LINHA DE CÓDIGO
@@ -44,13 +55,24 @@ const OrderList = ({ orders }: OrderListProps) => {
   const stylesPaymentFailed = "bg-red-300 text-gray-800";
   const stylesStatus =
     "w-fit rounded-full px-2 py-1 text-xs font-semibold text-white";
+
+  // Função para navegar de volta ao menu usando o slug da URL
+  const handleBackToMenu = () => {
+    const cleanCpf = removeCpfPunctuation(cpf);
+    const method = consumptionMethod || "TAKE_AWAY";
+
+    router.replace(
+      `/${restaurantSlug}/menu?consumptionMethod=${method}&cpf=${cleanCpf}`,
+    );
+  };
+
   return (
     <div className="space-y-6 p-5">
       <Button
         size="icon"
         variant="secondary"
         className="rounded-full"
-        onClick={() => router.back()}
+        onClick={handleBackToMenu}
       >
         <ChevronLeftIcon className="h-4 w-4" />
       </Button>
