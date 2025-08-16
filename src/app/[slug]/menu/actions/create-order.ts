@@ -2,7 +2,6 @@
 
 import { ConsumptionMethod } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { db } from "@/lib/prisma";
 
@@ -45,7 +44,7 @@ export const createOrder = async (input: CreateOrderProps) => {
     return acc + productPrice;
   }, 0);
 
-  await db.order.create({
+  const order = await db.order.create({
     data: {
       consumptionMethod: input.consumptionMethod as ConsumptionMethod,
       status: "PENDING",
@@ -62,11 +61,14 @@ export const createOrder = async (input: CreateOrderProps) => {
         },
       },
 
-      restaurantId: restaurant.id
-      ,
+      restaurantId: restaurant.id,
     },
-
   });
-  revalidatePath(`/${input.slug}/orders?cpf=${removeCpfPunctuation(input.customerCpf)}`);
-  redirect(`/${input.slug}/orders?cpf=${removeCpfPunctuation(input.customerCpf)}`);
+  revalidatePath(
+    `/${input.slug}/orders?cpf=${removeCpfPunctuation(input.customerCpf)}`,
+  );
+  /*  redirect(
+    `/${input.slug}/orders?cpf=${removeCpfPunctuation(input.customerCpf)}`,
+  ); */
+  return order;
 };

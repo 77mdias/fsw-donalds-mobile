@@ -2,9 +2,10 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ConsumptionMethod } from "@prisma/client";
+import { loadStripe } from "@stripe/stripe-js";
 import { Loader2 } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
-import { useContext, useState, useTransition } from "react";
+import { useContext, useState } from "react";
 import { useForm } from "react-hook-form";
 import { PatternFormat } from "react-number-format";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ import { FormControl } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
 import { createOrder } from "../../actions/create-order";
+import { createStripeCheckout } from "../../actions/create-stripe-cheackout";
 import { CartContext } from "../../contexts/cart";
 import { isValidCpf } from "../../helpers/cpf";
 
@@ -42,7 +44,7 @@ const formSchema = z.object({
 type FormSchema = z.infer<typeof formSchema>;
 
 const FinishOrderButton = () => {
-  const [isPending, startTransition] = useTransition();
+  const [isLoading, setIsLoading] = useState(false);
   const { slug } = useParams<{ slug: string }>();
   const { products } = useContext(CartContext);
   const searchParams = useSearchParams();
@@ -57,29 +59,36 @@ const FinishOrderButton = () => {
 
   const onSubmit = async (data: FormSchema) => {
     try {
+      setIsLoading(true);
       const consumptionMethod = searchParams.get(
         "consumptionMethod",
       ) as ConsumptionMethod;
 
-      startTransition(async () => {
-        await createOrder({
+      const order = await createOrder({
         customerName: data.username,
         customerCpf: data.cpf,
         products,
         consumptionMethod,
-          slug,
-          total: 0,
-        });
-        //Fecha o Drawer após sucesso do pedido
-        setIsDrawerOpen(false);
-        //Limpa o formulário
-        form.reset();
-        toast.success("Pedido criado com sucesso");
-        console.log("Pedido criado com sucesso");
+        slug,
+        total: 0,
       });
+      const { sessionId } = await createStripeCheckout({
+        products,
+        orderId: order.id,
+        slug,
+        consumptionMethod,
+        cpf: data.cpf,
+      });
+      if (!process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY) return;
+      const stripe = await loadStripe(
+        process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!,
+      );
+      stripe?.redirectToCheckout({ sessionId: sessionId! });
     } catch (error) {
       toast.error("Erro ao criar pedido");
       console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -138,9 +147,9 @@ const FinishOrderButton = () => {
                   type="submit"
                   className="w-full rounded-full"
                   variant="destructive"
-                  disabled={isPending}
+                  disabled={isLoading}
                 >
-                  {isPending ? (
+                  {isLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     "Finalizar compra"
